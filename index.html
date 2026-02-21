@@ -221,7 +221,7 @@
     function getRandomSymbol(isCascade = false) {
         let rand = Math.random();
         // Adjust probabilities (less scatters during cascades)
-        let scatProb = isCascade ? 0 : 0.1; 
+        let scatProb = isCascade ? 0 : 0.055; 
         if (rand < scatProb) return SYMBOLS[1]; // Scatter
         if (rand < 0.08) return SYMBOLS[0]; // Wild
         if (rand < 0.2) return SYMBOLS[2];
@@ -550,4 +550,5 @@
 </script>
 </body>
 </html>
+
 
