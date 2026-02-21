@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mahjong Ways - Realistic Demo</title>
+    <style>
+        /* --- CSS VARIABLES --- */
+        :root {
+            --bg-dark: #2a0000;
+            --bg-light: #6b0000;
+            --gold: #ffd700;
+            --gold-dark: #c5a000;
+            --green: #28a745;
+            --tile-bg: linear-gradient(180deg, #fffcf0 0%, #e6dfc8 100%);
+            --tile-gold-bg: linear-gradient(180deg, #fff7a1 0%, #d4af37 100%);
+            --tile-border: #bdae85;
+        }
+
+        /* --- RESET & BODY --- */
+        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+        body { background: #000; font-family: 'Segoe UI', Tahoma, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; color: white; }
+
+        /* --- MAIN CONTAINER --- */
+        #game-app {
+            width: 100%; max-width: 420px; height: 100vh; max-height: 900px;
+            background: radial-gradient(circle at top, var(--bg-light), var(--bg-dark));
+            display: flex; flex-direction: column; position: relative; box-shadow: 0 0 20px #000; overflow: hidden;
+        }
+
+        /* --- MULTIPLIER BAR --- */
+        #multiplier-bar {
+            display: flex; justify-content: space-evenly; align-items: center; background: rgba(0,0,0,0.6);
+            padding: 12px 0; border-top: 2px solid var(--gold); border-bottom: 2px solid var(--gold);
+            margin-top: 10px; z-index: 5; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        .mult { font-size: 1.2rem; font-weight: 900; color: #888; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .mult.active { color: var(--gold); font-size: 1.6rem; text-shadow: 0 0 15px var(--gold); transform: scale(1.2); }
+
+        /* --- SLOT GRID (VIEWPORT) --- */
+        #slot-viewport {
+            flex-grow: 1; display: flex; justify-content: center; align-items: center; padding: 10px; z-index: 2;
+        }
+        #grid {
+            display: flex; gap: 5px; width: 100%; height: 320px; background: rgba(0, 40, 0, 0.6);
+            padding: 6px; border: 3px solid var(--green); border-radius: 12px; box-shadow: inset 0 0 20px #000;
+        }
+
+        /* The Columns (Masks) */
+        .col {
+            flex: 1; height: 100%; position: relative; overflow: hidden; border-radius: 6px; display: flex; flex-direction: column; justify-content: flex-end;
+        }
+
+        /* The moving strip for spinning */
+        .reel-strip {
+            display: flex; flex-direction: column; gap: 5px; width: 100%; position: absolute; bottom: 0;
+            /* Transition added dynamically in JS */
+        }
+
+        /* The Tiles */
+        .tile {
+            width: 100%; height: 96px; /* Fixed height for exact calculations */
+            background: var(--tile-bg); border-radius: 8px; border-bottom: 6px solid var(--tile-border);
+            display: flex; justify-content: center; align-items: center; font-size: 2.2rem; font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.4); flex-shrink: 0;
+            position: relative; transition: filter 0.2s;
+        }
+
+        /* Tile Variations */
+        .tile.gold-plated { background: var(--tile-gold-bg); border-bottom-color: #aa8822; }
+        .tile[data-sym="WILD"] { background: linear-gradient(180deg, #ffea00, #b8860b); color: #c00; font-size: 1.2rem; text-shadow: 1px 1px 0 #fff; }
+        .tile[data-sym="SCAT"] { background: linear-gradient(180deg, #ff4d4d, #a00); color: var(--gold); font-size: 1.2rem; box-shadow: inset 0 0 10px #ff0000; }
+        
+        /* Win & Explode Animations */
+        .tile.win { box-shadow: 0 0 15px var(--gold); border-color: var(--gold); z-index: 10; animation: pulse 0.4s infinite alternate; }
+        .tile.explode { animation: explodeAnim 0.3s forwards cubic-bezier(0.55, 0.085, 0.68, 0.53); }
+        .tile.drop-in { animation: dropBounce 0.5s forwards cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+
+        @keyframes pulse { 0% { filter: brightness(1); transform: scale(1); } 100% { filter: brightness(1.3); transform: scale(1.05); } }
+        @keyframes explodeAnim { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.2); opacity: 0.8; } 100% { transform: scale(0); opacity: 0; } }
+        @keyframes dropBounce { 0% { transform: translateY(-300px); opacity: 0; } 60% { transform: translateY(15px); opacity: 1; } 80% { transform: translateY(-5px); } 100% { transform: translateY(0); } }
+
+        /* --- INFO PANEL --- */
+        #info-panel {
+            background: linear-gradient(to bottom, #2b1408, #1a0a04); padding: 12px 10px;
+            display: flex; justify-content: space-between; border-top: 2px solid var(--gold-dark); z-index: 5;
+        }
+        .info-box { text-align: center; flex: 1; }
+        .info-box span { font-size: 0.7rem; color: #aaa; text-transform: uppercase; display: block; margin-bottom: 2px; }
+        .info-value { font-size: 1.1rem; font-weight: bold; color: var(--gold); }
+
+        /* --- CONTROLS --- */
+        #controls {
+            padding: 15px 20px 30px; display: flex; justify-content: center; align-items: center; gap: 15px; background: rgba(0,0,0,0.8); z-index: 5;
+        }
+        .btn-small {
+            width: 45px; height: 45px; border-radius: 50%; border: 2px solid var(--gold-dark); background: linear-gradient(145deg, #444, #111);
+            color: white; font-weight: bold; font-size: 1.2rem; display: flex; justify-content: center; align-items: center; transition: 0.1s; cursor: pointer;
+        }
+        .btn-small:active { transform: scale(0.9); }
+        .btn-small.active { background: var(--green); color: white; border-color: white; }
+        
+        #btn-spin {
+            width: 80px; height: 80px; border-radius: 50%; border: 4px solid var(--gold);
+            background: radial-gradient(circle at 30% 30%, #34ce57, #1e7e34); font-size: 2.5rem; color: white; display: flex; justify-content: center; align-items: center; cursor: pointer; transition: 0.1s; box-shadow: 0 0 15px rgba(40, 167, 69, 0.6);
+        }
+        #btn-spin:active { transform: scale(0.92); filter: brightness(0.8); }
+        .spin-anim { animation: rotate 1s linear infinite; }
+        @keyframes rotate { 100% { transform: rotate(360deg); } }
+
+        /* --- OVERLAYS & MESSAGES --- */
+        .overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.85); z-index: 20; display: flex; flex-direction: column; justify-content: center; align-items: center; opacity: 0; pointer-events: none; transition: 0.3s; }
+        .overlay.show { opacity: 1; pointer-events: auto; }
+        .msg-title { font-size: 3.5rem; color: var(--gold); font-weight: 900; text-shadow: 0 0 20px #c00, 0 5px 0 #800; transform: scale(0.5); transition: 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .overlay.show .msg-title { transform: scale(1); }
+        .msg-val { font-size: 2rem; color: white; font-weight: bold; margin-top: 10px; }
+        
+        #toast { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); border: 2px solid var(--gold); padding: 8px 16px; border-radius: 20px; color: var(--gold); font-weight: bold; opacity: 0; transition: 0.3s; z-index: 25; pointer-events: none; }
+        #toast.show { opacity: 1; transform: translate(-50%, -80%); }
+
+        #fs-banner { position: absolute; top: 60px; left: 0; right: 0; background: rgba(200,0,0,0.8); color: var(--gold); text-align: center; padding: 5px; font-weight: bold; z-index: 10; display: none; }
+    </style>
+</head>
+<body>
+
+<div id="game-app">
+    <div id="fs-banner">FREE SPIN MODE: <span id="fs-count">0</span> LEFT</div>
+
+    <div id="multiplier-bar">
+        <div class="mult active" id="m0">x1</div>
+        <div class="mult" id="m1">x2</div>
+        <div class="mult" id="m2">x3</div>
+        <div class="mult" id="m3">x5</div>
+    </div>
+
+    <div id="slot-viewport">
+        <div id="grid">
+            </div>
+    </div>
+
+    <div id="info-panel">
+        <div class="info-box"><span>Balance</span><div class="info-value" id="ui-bal">10,000.00</div></div>
+        <div class="info-box"><span>Win</span><div class="info-value" id="ui-win">0.00</div></div>
+        <div class="info-box"><span>Bet</span><div class="info-value" id="ui-bet">10.00</div></div>
+    </div>
+
+    <div id="controls">
+        <div class="btn-small" id="btn-turbo">⚡</div>
+        <div class="btn-small" id="btn-min">-</div>
+        <div id="btn-spin">↻</div>
+        <div class="btn-small" id="btn-plus">+</div>
+        <div class="btn-small" id="btn-auto">A</div>
+    </div>
+
+    <div class="overlay" id="overlay">
+        <div class="msg-title" id="msg-title">BIG WIN</div>
+        <div class="msg-val" id="msg-val">0.00</div>
+    </div>
+
+    <div id="toast">Message</div>
+</div>
+
+<script>
+    /* --- GAME CONFIGURATION --- */
+    const SYMBOLS = [
+        { id: 'WILD', label: 'WILD', color: '#fff', val: 0 },
+        { id: 'SCAT', label: 'SCAT', color: '#fff', val: 0 },
+        { id: 'H1', label: '發', color: '#008000', val: 50 },
+        { id: 'H2', label: '中', color: '#c00', val: 40 },
+        { id: 'H3', label: '白', color: '#0000ff', val: 30 },
+        { id: 'L1', label: '萬', color: '#222', val: 15 },
+        { id: 'L2', label: '筒', color: '#222', val: 10 },
+        { id: 'L3', label: '索', color: '#222', val: 5 }
+    ];
+
+    const MULTIPLIERS = [1, 2, 3, 5];
+    const BETS = [1, 5, 10, 50, 100, 500];
+    const COLS = 5, ROWS = 3, TILE_HEIGHT = 101; // 96px + 5px gap
+
+    let state = {
+        balance: 10000.00, betIdx: 2, currentWin: 0, multIdx: 0, freeSpins: 0,
+        isSpinning: false, isAuto: false, isTurbo: false,
+        gridData: [] // Store current DOM elements of the grid 5x3
+    };
+
+    const DOM = {
+        grid: document.getElementById('grid'), bal: document.getElementById('ui-bal'),
+        win: document.getElementById('ui-win'), bet: document.getElementById('ui-bet'),
+        spin: document.getElementById('btn-spin'), btnMin: document.getElementById('btn-min'),
+        btnPlus: document.getElementById('btn-plus'), btnTurbo: document.getElementById('btn-turbo'),
+        btnAuto: document.getElementById('btn-auto'), mults: document.querySelectorAll('.mult'),
+        overlay: document.getElementById('overlay'), msgTitle: document.getElementById('msg-title'),
+        msgVal: document.getElementById('msg-val'), toast: document.getElementById('toast'),
+        fsBanner: document.getElementById('fs-banner'), fsCount: document.getElementById('fs-count')
+    };
+
+    /* --- INITIALIZATION --- */
+    function init() {
+        for (let c = 0; c < COLS; c++) {
+            let colDiv = document.createElement('div');
+            colDiv.className = 'col';
+            let strip = document.createElement('div');
+            strip.className = 'reel-strip';
+            strip.id = `strip-${c}`;
+            
+            let colData = [];
+            for (let r = 0; r < ROWS; r++) {
+                let tile = createTile();
+                strip.appendChild(tile);
+                colData.push(tile);
+            }
+            state.gridData.push(colData);
+            colDiv.appendChild(strip);
+            DOM.grid.appendChild(colDiv);
+        }
+        updateUI();
+        attachEvents();
+    }
+
+    /* --- TILE CREATION LOGIC --- */
+    function getRandomSymbol(isCascade = false) {
+        let rand = Math.random();
+        // Adjust probabilities (less scatters during cascades)
+        let scatProb = isCascade ? 0 : 0.02; 
+        if (rand < scatProb) return SYMBOLS[1]; // Scatter
+        if (rand < 0.08) return SYMBOLS[0]; // Wild
+        if (rand < 0.2) return SYMBOLS[2];
+        if (rand < 0.35) return SYMBOLS[3];
+        if (rand < 0.5) return SYMBOLS[4];
+        let low = [SYMBOLS[5], SYMBOLS[6], SYMBOLS[7]];
+        return low[Math.floor(Math.random() * low.length)];
+    }
+
+    function createTile(isCascade = false, colIndex = -1) {
+        let sym = getRandomSymbol(isCascade);
+        let el = document.createElement('div');
+        el.className = 'tile';
+        el.dataset.sym = sym.id;
+        el.dataset.val = sym.val;
+        el.innerText = sym.label;
+        if (sym.color !== '#fff') el.style.color = sym.color;
+
+        // Gold Plated Logic (Only columns 1, 2, 3 and not Wild/Scatter)
+        if (colIndex >= 1 && colIndex <= 3 && sym.id !== 'WILD' && sym.id !== 'SCAT') {
+            if (Math.random() < 0.3) {
+                el.classList.add('gold-plated');
+            }
+        }
+        return el;
+    }
+
+    function createSpecificTile(symId) {
+        let sym = SYMBOLS.find(s => s.id === symId);
+        let el = document.createElement('div');
+        el.className = 'tile drop-in';
+        el.dataset.sym = sym.id;
+        el.dataset.val = sym.val;
+        el.innerText = sym.label;
+        return el;
+    }
+
+    /* --- GAMEPLAY FLOW --- */
+    const sleep = ms => new Promise(r => setTimeout(r, state.isTurbo ? ms/2 : ms));
+
+    async function startSpin() {
+        if (state.isSpinning) {
+            // Stop auto if clicked during spin
+            if (state.isAuto) { state.isAuto = false; DOM.btnAuto.classList.remove('active'); }
+            return; 
+        }
+
+        let betAmount = BETS[state.betIdx];
+        if (state.freeSpins === 0) {
+            if (state.balance < betAmount) return showToast("Saldo Tidak Cukup!");
+            state.balance -= betAmount;
+        } else {
+            state.freeSpins--;
+        }
+
+        state.isSpinning = true;
+        state.currentWin = 0;
+        state.multIdx = 0;
+        updateUI();
+        DOM.spin.innerHTML = '⚙';
+        DOM.spin.classList.add('spin-anim');
+
+        await physicalReelSpin();
+    }
+
+    async function physicalReelSpin() {
+        let promises = [];
+        
+        // Buat ilusi gulungan panjang untuk tiap kolom
+        for (let c = 0; c < COLS; c++) {
+            let strip = document.getElementById(`strip-${c}`);
+            
+            // Generate 15 fake tiles for the spinning effect
+            let fakeTiles = [];
+            for (let i = 0; i < 15; i++) {
+                fakeTiles.push(createTile(false, c));
+            }
+            
+            // Generate 3 actual result tiles
+            let resultTiles = [];
+            for (let i = 0; i < ROWS; i++) {
+                resultTiles.push(createTile(false, c));
+            }
+            
+            // Bersihkan strip lama dan masukkan yang baru
+            // Urutan DOM: Result Tiles (bawah) <- Fake Tiles (atas)
+            // Karena strip container letaknya absolut di bottom: 0, elemen terakhir ada di paling bawah.
+            strip.innerHTML = '';
+            strip.style.transition = 'none';
+            strip.style.transform = `translateY(-${15 * TILE_HEIGHT}px)`; // Tarik ke atas
+
+            // Append fake tiles first (they will be at the top)
+            fakeTiles.forEach(t => strip.appendChild(t));
+            // Append result tiles (they will be at the bottom)
+            resultTiles.forEach(t => strip.appendChild(t));
+
+            // Simpan referensi result tiles ke state grid
+            state.gridData[c] = resultTiles;
+
+            // Animasikan turun
+            promises.push(new Promise(async resolve => {
+                await sleep(50 + (c * 100)); // Delay antar kolom
+                strip.style.transition = `transform ${state.isTurbo ? 0.8 : 1.5}s cubic-bezier(0.1, 0.7, 0.1, 1)`;
+                strip.style.transform = `translateY(0px)`;
+                setTimeout(resolve, state.isTurbo ? 800 : 1500);
+            }));
+        }
+
+        await Promise.all(promises);
+
+        // Setelah berhenti, bersihkan DOM fake tiles agar ringan
+        for (let c = 0; c < COLS; c++) {
+            let strip = document.getElementById(`strip-${c}`);
+            while (strip.children.length > 3) {
+                strip.removeChild(strip.firstChild);
+            }
+        }
+
+        await evaluateWays();
+    }
+
+    async function evaluateWays() {
+        let wins = [];
+        let spinPayout = 0;
+        let bet = BETS[state.betIdx];
+        let multiplier = MULTIPLIERS[state.multIdx];
+
+        // 243 Ways Logic (Left to right matches)
+        let uniqueSymbols = [...new Set(SYMBOLS.filter(s => s.val > 0).map(s => s.id))];
+
+        uniqueSymbols.forEach(symId => {
+            let matches = [[], [], [], [], []];
+            
+            for (let c = 0; c < COLS; c++) {
+                for (let r = 0; r < ROWS; r++) {
+                    let tile = state.gridData[c][r];
+                    if (tile.dataset.sym === symId || tile.dataset.sym === 'WILD') {
+                        matches[c].push(tile);
+                    }
+                }
+            }
+
+            if (matches[0].length > 0 && matches[1].length > 0 && matches[2].length > 0) {
+                let ways = matches[0].length * matches[1].length * matches[2].length;
+                let colsMatched = 3;
+                
+                if (matches[3].length > 0) { ways *= matches[3].length; colsMatched = 4; }
+                if (colsMatched === 4 && matches[4].length > 0) { ways *= matches[4].length; colsMatched = 5; }
+
+                let symVal = parseInt(matches[0].find(t => t.dataset.sym !== 'WILD')?.dataset.val || 50);
+                spinPayout += (ways * symVal * (bet/10) * multiplier);
+
+                for (let i = 0; i < colsMatched; i++) {
+                    matches[i].forEach(t => { if (!wins.includes(t)) wins.push(t); });
+                }
+            }
+        });
+
+        if (wins.length > 0) {
+            state.currentWin += spinPayout;
+            updateUI();
+
+            // 1. Highlight Wins
+            wins.forEach(t => t.classList.add('win'));
+            await sleep(600);
+
+            // 2. Explode & Calculate Cascade
+            wins.forEach(t => {
+                t.classList.remove('win');
+                t.classList.add('explode');
+            });
+            await sleep(300);
+
+            // 3. Process the Grid & Drop new tiles
+            for (let c = 0; c < COLS; c++) {
+                let strip = document.getElementById(`strip-${c}`);
+                let colTiles = state.gridData[c];
+                
+                // Cari tile yang hancur di kolom ini
+                for (let r = ROWS - 1; r >= 0; r--) {
+                    let tile = colTiles[r];
+                    if (wins.includes(tile)) {
+                        let isGold = tile.classList.contains('gold-plated');
+                        
+                        // Hapus dari array logis dan DOM
+                        colTiles.splice(r, 1);
+                        try { strip.removeChild(tile); } catch(e){}
+
+                        // Jika Gold Plated, sisipkan WILD di posisi yang sama
+                        if (isGold) {
+                            let wildTile = createSpecificTile('WILD');
+                            // Karena flex-direction column, insertBefore menyesuaikan posisi visual
+                            colTiles.splice(r, 0, wildTile); 
+                            strip.insertBefore(wildTile, strip.children[r]);
+                        }
+                    }
+                }
+
+                // Tambahkan tile baru di paling atas untuk mengisi kekosongan
+                let missing = ROWS - colTiles.length;
+                for (let i = 0; i < missing; i++) {
+                    let newTile = createTile(true, c);
+                    newTile.classList.add('drop-in');
+                    colTiles.unshift(newTile); // Masukkan ke awal array logis
+                    strip.insertBefore(newTile, strip.firstChild); // Masukkan ke awal DOM (paling atas visual)
+                }
+            }
+
+            // Naikkan Multiplier
+            if (state.multIdx < MULTIPLIERS.length - 1) state.multIdx++;
+            updateUI();
+
+            await sleep(600); // Tunggu animasi jatuh selesai
+            
+            // Bersihkan class drop-in
+            state.gridData.forEach(col => col.forEach(t => t.classList.remove('drop-in')));
+
+            // Rekursif cek kemenangan lagi (Cascade)
+            await evaluateWays();
+
+        } else {
+            // End of Cascade, check Scatters
+            await checkScatters();
+        }
+    }
+
+    async function checkScatters() {
+        let scats = [];
+        state.gridData.forEach(col => col.forEach(t => { if(t.dataset.sym === 'SCAT') scats.push(t); }));
+
+        if (scats.length >= 3) {
+            scats.forEach(t => t.classList.add('win'));
+            await sleep(1000);
+            state.freeSpins += 10;
+            showOverlay("FREE SPINS!", "+10 SPINS");
+            await sleep(2500);
+            hideOverlay();
+            updateUI();
+        }
+
+        endSpinSequence();
+    }
+
+    async function endSpinSequence() {
+        state.balance += state.currentWin;
+        state.isSpinning = false;
+        DOM.spin.innerHTML = '↻';
+        DOM.spin.classList.remove('spin-anim');
+        
+        if (state.currentWin >= BETS[state.betIdx] * 15) {
+            showOverlay("BIG WIN!", (state.currentWin).toLocaleString('en-US'));
+            await sleep(3000);
+            hideOverlay();
+        }
+        
+        updateUI();
+
+        if (state.isAuto && state.freeSpins === 0) {
+            await sleep(800);
+            if (state.isAuto) startSpin();
+        } else if (state.freeSpins > 0) {
+            await sleep(1000);
+            startSpin(); // Auto spin for free spins
+        }
+    }
+
+    /* --- UI & UTILS --- */
+    function updateUI() {
+        DOM.bal.innerText = state.balance.toLocaleString('en-US', {minimumFractionDigits: 2});
+        DOM.bet.innerText = BETS[state.betIdx].toLocaleString('en-US', {minimumFractionDigits: 2});
+        DOM.win.innerText = state.currentWin.toLocaleString('en-US', {minimumFractionDigits: 2});
+
+        DOM.mults.forEach((el, idx) => {
+            if (idx === state.multIdx) el.classList.add('active');
+            else el.classList.remove('active');
+        });
+
+        if (state.freeSpins > 0) {
+            DOM.fsBanner.style.display = 'block';
+            DOM.fsCount.innerText = state.freeSpins;
+        } else {
+            DOM.fsBanner.style.display = 'none';
+        }
+    }
+
+    function showOverlay(title, val) {
+        DOM.msgTitle.innerText = title;
+        DOM.msgVal.innerText = val;
+        DOM.overlay.classList.add('show');
+    }
+    function hideOverlay() { DOM.overlay.classList.remove('show'); }
+    
+    function showToast(msg) {
+        DOM.toast.innerText = msg;
+        DOM.toast.classList.add('show');
+        setTimeout(() => DOM.toast.classList.remove('show'), 2000);
+    }
+
+    /* --- EVENTS --- */
+    function attachEvents() {
+        DOM.spin.addEventListener('click', startSpin);
+        
+        DOM.btnPlus.addEventListener('click', () => {
+            if (state.isSpinning || state.freeSpins > 0) return;
+            if (state.betIdx < BETS.length - 1) { state.betIdx++; updateUI(); }
+        });
+        
+        DOM.btnMin.addEventListener('click', () => {
+            if (state.isSpinning || state.freeSpins > 0) return;
+            if (state.betIdx > 0) { state.betIdx--; updateUI(); }
+        });
+
+        DOM.btnTurbo.addEventListener('click', () => {
+            state.isTurbo = !state.isTurbo;
+            DOM.btnTurbo.classList.toggle('active');
+        });
+
+        DOM.btnAuto.addEventListener('click', () => {
+            state.isAuto = !state.isAuto;
+            DOM.btnAuto.classList.toggle('active');
+            if (state.isAuto && !state.isSpinning) startSpin();
+        });
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>
